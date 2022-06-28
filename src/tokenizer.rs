@@ -1,8 +1,8 @@
 use std::fmt;
 
+use combine::stream::ResetStream;
 use combine::{StreamOnce, Positioned};
 use combine::error::{StreamError};
-use combine::stream::{Resetable};
 use combine::easy::{Error, Errors};
 
 use position::Pos;
@@ -37,12 +37,12 @@ pub struct Checkpoint {
 }
 
 impl<'a> StreamOnce for TokenStream<'a> {
-    type Item = Token<'a>;
+    type Token = Token<'a>;
     type Range = Token<'a>;
     type Position = Pos;
     type Error = Errors<Token<'a>, Token<'a>, Pos>;
 
-    fn uncons(&mut self) -> Result<Self::Item, Error<Token<'a>, Token<'a>>> {
+    fn uncons(&mut self) -> Result<Self::Token, Error<Token<'a>, Token<'a>>> {
         if let Some((at, tok, off, pos)) = self.next_state {
             if at == self.off {
                 self.off = off;
@@ -66,7 +66,7 @@ impl<'a> Positioned for TokenStream<'a> {
     }
 }
 
-impl<'a> Resetable for TokenStream<'a> {
+impl<'a> ResetStream for TokenStream<'a> {
     type Checkpoint = Checkpoint;
     fn checkpoint(&self) -> Self::Checkpoint {
         Checkpoint {
@@ -74,9 +74,10 @@ impl<'a> Resetable for TokenStream<'a> {
             off: self.off,
         }
     }
-    fn reset(&mut self, checkpoint: Checkpoint) {
+    fn reset(&mut self, checkpoint: Checkpoint) -> Result<(), Self::Error> {
         self.position = checkpoint.position;
         self.off = checkpoint.off;
+        Ok(())
     }
 }
 
@@ -132,7 +133,7 @@ impl<'a> TokenStream<'a> {
                         }
                         '\n' => {
                             return Err(
-                                Error::unexpected_message(
+                                Error::unexpected_static_message(
                                     "unterminated string value"
                                 )
                             );
@@ -143,7 +144,7 @@ impl<'a> TokenStream<'a> {
                     }
                     prev_char = cur_char;
                 }
-                Err(Error::unexpected_message("unterminated string value"))
+                Err(Error::unexpected_static_message("unterminated string value"))
             }
             _ => {  // any other non-whitespace char is also a token
                 let mut prev_char = cur_char;

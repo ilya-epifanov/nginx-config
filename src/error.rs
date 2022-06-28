@@ -59,7 +59,7 @@ impl<'a> From<InternalError<'a>> for ParseError {
                 let mut close = Vec::new();
                 for item in &expected_buf {
                     match item {
-                        Info::Borrowed(item) => {
+                        Info::Static(item) => {
                             let conf = jaro_winkler(&unexpected, item);
                             if conf > 0.8 {
                                 close.push((item, conf));
@@ -75,7 +75,7 @@ impl<'a> From<InternalError<'a>> for ParseError {
                 close.truncate(3);
                 for (item, _) in &close {
                     error_buf.push(convert(Error::Expected(
-                        Info::Borrowed(item))));
+                        Info::Static(item))));
                 }
                 if close.len() < expected_buf.len() {
                     error_buf.push(Error::Expected(Info::Owned(format!(

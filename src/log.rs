@@ -11,7 +11,7 @@ use value::Value;
 
 
 fn access_log<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     enum I {
         If(Value),
@@ -25,7 +25,7 @@ fn access_log<'a>()
         ident("off").map(|_| ast::AccessLog::Off),
         value().and(optional(
             string()
-            .and(many::<Vec<_>, _>(
+            .and(many::<Vec<_>, _, _>(
                 (position(), string()).and_then(|(pos, s)| {
                     if s.value.starts_with("if=") {
                         Ok(I::If(Value::parse_str(pos, &s.value[3..])?))
@@ -38,7 +38,7 @@ fn access_log<'a>()
                     } else if s.value.starts_with("flush=") {
                         Ok(I::Flush(s.value[6..].to_string()))
                     } else {
-                        Err(Error::unexpected_message(
+                        Err(Error::unexpected_format(
                             format!("bad access_log param {:?}", s.value)))
                     }
                 })))
@@ -70,7 +70,7 @@ fn access_log<'a>()
 }
 
 pub fn directives<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     choice((
         access_log(),

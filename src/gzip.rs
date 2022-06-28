@@ -6,7 +6,7 @@ use grammar::bool;
 use helpers::{semi, ident};
 use tokenizer::TokenStream;
 
-pub fn gzip_static<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn gzip_static<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::GzipStatic::*;
     ident("gzip_static").with(choice((
         ident("on").map(|_| On),
@@ -17,7 +17,7 @@ pub fn gzip_static<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
     .skip(semi())
 }
 
-pub fn gzip_proxied<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn gzip_proxied<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::GzipProxied::*;
     ident("gzip_proxied").with(many1(choice((
         ident("off").map(|_| Off),
@@ -34,7 +34,7 @@ pub fn gzip_proxied<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
     .skip(semi())
 }
 
-pub fn directives<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn directives<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     choice((
         ident("gzip").with(bool()).skip(semi())
             .map(Item::Gzip),

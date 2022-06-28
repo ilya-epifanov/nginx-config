@@ -12,7 +12,7 @@ use value::{Value};
 
 
 fn rewrite<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     use ast::RewriteFlag::*;
     use ast::Item::Rewrite;
@@ -35,19 +35,19 @@ fn rewrite<'a>()
 }
 
 fn set<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     ident("set")
     .with(string().and_then(|t| {
         let ch1 = t.value.chars().nth(0).unwrap_or(' ');
         let ch2 = t.value.chars().nth(1).unwrap_or(' ');
-        if ch1 == '$' && matches!(ch2, 'a'...'z' | 'A'...'Z' | '_') &&
+        if ch1 == '$' && matches!(ch2, 'a'..='z' | 'A'..='Z' | '_') &&
             t.value[2..].chars()
-            .all(|x| matches!(x, 'a'...'z' | 'A'...'Z' | '0'...'9' | '_'))
+            .all(|x| matches!(x, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_'))
         {
             Ok(t.value[1..].to_string())
         } else {
-            Err(Error::unexpected_message("invalid variable"))
+            Err(Error::unexpected_static_message("invalid variable"))
         }
     }))
     .and(value())
@@ -56,23 +56,23 @@ fn set<'a>()
 }
 
 fn return_directive<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     use ast::Return::*;
     use value::Item::*;
 
     fn lit<'a, 'x>(val: &'a Value) -> Result<&'a str, Error<Token<'x>, Token<'x>>> {
         if val.data.is_empty() {
-            return Err(Error::unexpected_message(
+            return Err(Error::unexpected_static_message(
                 "empty return codes are not supported"));
         }
         if val.data.len() > 1 {
-            return Err(Error::unexpected_message(
+            return Err(Error::unexpected_static_message(
                 "return code can't contain variables"));
         }
         match val.data[0] {
             Literal(ref x) => return Ok(x),
-            _ => return Err(Error::unexpected_message(
+            _ => return Err(Error::unexpected_static_message(
                 "return code can't contain variables")),
         }
     }
@@ -97,7 +97,7 @@ fn return_directive<'a>()
                 _ => {
                     match Code::parse(lit(&a)?)? {
                         Code::Redirect(_)
-                        => return Err(Error::unexpected_message(
+                        => return Err(Error::unexpected_static_message(
                             "return with redirect code must have \
                              destination URI")),
                         Code::Normal(code)
@@ -123,10 +123,10 @@ fn strip_open_paren<'a>(v: &'_ mut Vec<&'a str>)
                     return Ok(())
                 }
             } else {
-                return Err(Error::unexpected_message("missing parenthesis"));
+                return Err(Error::unexpected_static_message("missing parenthesis"));
             }
         }
-        _ => return Err(Error::unexpected_message("missing parenthesis")),
+        _ => return Err(Error::unexpected_static_message("missing parenthesis")),
     }
     v.remove(0);
     Ok(())
@@ -144,10 +144,10 @@ fn strip_close_paren<'a>(v: &'_ mut Vec<&'a str>)
                     return Ok(());
                 }
             } else {
-                return Err(Error::unexpected_message("missing parenthesis"));
+                return Err(Error::unexpected_static_message("missing parenthesis"));
             }
         }
-        _ => return Err(Error::unexpected_message("missing parenthesis")),
+        _ => return Err(Error::unexpected_static_message("missing parenthesis")),
     }
     v.pop();
     Ok(())
@@ -161,7 +161,7 @@ fn parse_unary<'a>(mut v: Vec<&str>, position: Pos)
     let oper = v.remove(0);
     let right = Value::parse_str(position, v.remove(0))?;
     if v.len() > 0 {
-        return Err(Error::unexpected_message("extra argument to condition"));
+        return Err(Error::unexpected_static_message("extra argument to condition"));
     }
     match oper {
         "-d" => return Ok(DirExists(right)),
@@ -172,7 +172,7 @@ fn parse_unary<'a>(mut v: Vec<&str>, position: Pos)
         "!-x" => return Ok(NotExecutable(right)),
         "-e" => return Ok(Exists(right)),
         "!-e" => return Ok(NotExists(right)),
-        _ => return Err(Error::unexpected_message("missing parenthesis")),
+        _ => return Err(Error::unexpected_static_message("missing parenthesis")),
     }
 }
 
@@ -188,7 +188,7 @@ fn parse_binary<'a>(mut v: Vec<&str>, position: Pos)
     let oper = v.remove(0);
     let right = match &v[..] {
         [x] => x.to_string(),
-        _ => return Err(Error::unexpected_message(
+        _ => return Err(Error::unexpected_static_message(
                 "you can only compare against a single literal")),
     };
     match oper {
@@ -198,12 +198,12 @@ fn parse_binary<'a>(mut v: Vec<&str>, position: Pos)
         "!~" => return Ok(RegNeq(left, right, true)),
         "~*" => return Ok(RegEq(left, right, false)),
         "!~*" => return Ok(RegNeq(left, right, false)),
-        _ => return Err(Error::unexpected_message("missing parenthesis")),
+        _ => return Err(Error::unexpected_static_message("missing parenthesis")),
     }
 }
 
 fn if_directive<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     ident("if")
     .with(position())
@@ -215,7 +215,7 @@ fn if_directive<'a>()
         let binary = match v.get(0) {
             Some(x) if x.starts_with('$') => true,
             Some(_) => false,
-            None => return Err(Error::unexpected_message(
+            None => return Err(Error::unexpected_static_message(
                 "missing parenthesis")),
         };
         if binary {
@@ -232,7 +232,7 @@ fn if_directive<'a>()
 }
 
 pub fn directives<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     choice((
         rewrite(),

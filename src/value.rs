@@ -1,4 +1,4 @@
-use std::mem;
+use std::{mem, borrow::Cow};
 use std::str::FromStr;
 
 use combine::easy::Error;
@@ -67,17 +67,17 @@ impl Value {
                         buf.push(Literal(value[cur_slice..idx].to_string()));
                     }
                     let fchar = chiter.next().map(|(_, c)| c)
-                        .ok_or_else(|| Error::unexpected_message(
+                        .ok_or_else(|| Error::unexpected_static_message(
                             "bare $ in expression"))?;
                     match fchar {
                         '{' => {
                             while let Some(&(_, c)) = chiter.peek() {
                                 match c {
-                                    'a'...'z' | 'A'...'Z' | '_' | '0'...'9'
+                                    'a'..='z' | 'A'..='Z' | '_' | '0'..='9'
                                     => chiter.next(),
                                     '}' => break,
                                     _ => {
-                                        return Err(Error::expected("}".into()));
+                                        return Err(Error::expected_static_message("}"));
                                     }
                                 };
                             }
@@ -87,10 +87,10 @@ impl Value {
                                 value[vstart+1..now].to_string()));
                             cur_slice = now+1;
                         }
-                        'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
+                        'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
                             while let Some(&(_, c)) = chiter.peek() {
                                 match c {
-                                    'a'...'z' | 'A'...'Z' | '_' | '0'...'9'
+                                    'a'..='z' | 'A'..='Z' | '_' | '0'..='9'
                                     => chiter.next(),
                                     _ => break,
                                 };
@@ -102,7 +102,7 @@ impl Value {
                             cur_slice = now;
                         }
                         _ => {
-                            return Err(Error::unexpected_message(
+                            return Err(Error::unexpected_format(
                                 format!("variable name starts with \
                                     bad char {:?}", fchar)));
                         }
@@ -141,7 +141,7 @@ impl Value {
                         // TODO(tailhook) figure out maybe this is actually a
                         // tokenizer error, or maybe make this cryptic message
                         // better
-                        return Err(Error::unexpected_message(
+                        return Err(Error::unexpected_static_message(
                             "quote closes prematurely"));
                     }
                     return Ok(buf);
@@ -153,29 +153,29 @@ impl Value {
                             mem::replace(&mut cur_slice, String::new())));
                     }
                     let fchar = chiter.next().map(|(_, c)| c)
-                        .ok_or_else(|| Error::unexpected_message(
+                        .ok_or_else(|| Error::unexpected_static_message(
                             "bare $ in expression"))?;
                     match fchar {
                         '{' => {
                             unimplemented!();
                         }
-                        'a'...'z' | 'A'...'Z' | '_' | '0'...'9' => {
+                        'a'..='z' | 'A'..='Z' | '_' | '0'..='9' => {
                             while let Some(&(_, c)) = chiter.peek() {
                                 match c {
-                                    'a'...'z' | 'A'...'Z' | '_' | '0'...'9'
+                                    'a'..='z' | 'A'..='Z' | '_' | '0'..='9'
                                     => chiter.next(),
                                     _ => break,
                                 };
                             }
                             let now = chiter.peek().map(|&(idx, _)| idx)
                                 .ok_or_else(|| {
-                                    Error::unexpected_message("unclosed quote")
+                                    Error::unexpected_static_message("unclosed quote")
                                 })?;
                             buf.push(Variable(
                                 value[vstart..now].to_string()));
                         }
                         _ => {
-                            return Err(Error::unexpected_message(
+                            return Err(Error::unexpected_format(
                                 format!("variable name starts with \
                                     bad char {:?}", fchar)));
                         }
@@ -185,7 +185,7 @@ impl Value {
             }
             prev_char = cur_char;
         }
-        return Err(Error::unexpected_message("unclosed quote"));
+        return Err(Error::unexpected_static_message("unclosed quote"));
     }
 }
 
@@ -235,6 +235,24 @@ impl Value {
             };
             *item = Literal(new_value);
         }
+    }
+
+    pub fn to_string<'a>(&'a self) -> Option<Cow<'a, String>> {
+        use self::Item::*;
+
+        if let [Literal(l)] = &self.data[..] {
+            return Some(Cow::Borrowed(&l));
+        }
+
+        let mut ret = String::new();
+        for item in &self.data {
+            if let Literal(l) = item { 
+                ret.push_str(&l);
+            } else {
+                return None;
+            }
+        }
+        Some(Cow::Owned(ret))
     }
 }
 

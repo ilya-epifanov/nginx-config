@@ -54,6 +54,8 @@ impl Displayable for ast::Item {
             | RecursiveErrorPages(opt)
             | ChunkedTransferEncoding(opt)
             | RealIpRecursive(opt)
+            | ProxyCacheRevalidate(opt)
+            | ProxyCacheLock(opt)
             => {
                 f.indent();
                 f.write(self.directive_name());
@@ -81,6 +83,11 @@ impl Displayable for ast::Item {
             Location(ast::Location { ref pattern, ref directives, .. }) => {
                 simple_block(f,
                     format_args!("location {}", pattern),
+                    &directives);
+            }
+            Upstream(ast::Upstream { ref name, ref directives, .. }) => {
+                simple_block(f,
+                    format_args!("upstream {}", name),
                     &directives);
             }
             LimitExcept(ast::LimitExcept { ref methods, ref directives, .. })
@@ -248,6 +255,8 @@ impl Displayable for ast::Item {
             | SslCertificate(ref val)
             | SslCertificateKey(ref val)
             | ProxyPass(ref val)
+            | ProxySslName(ref val)
+            | ProxySslTrustedCertificate(ref val)
             | ProxyCache(ref val)
             | ProxyCacheKey(ref val)
             | ProxyMethod(ref val)
@@ -474,6 +483,15 @@ impl Displayable for ast::Item {
                 }
                 f.end();
             }
+            ProxyKeepAlive(ref val) => {
+                // TODO
+            }           
+            ProxyCacheUseStale(ref val) => {
+                // TODO
+            }
+            ProxyCachePath(_) => {
+                // TODO
+            }
             KeepaliveTimeout(ref timeo, ref header_timeo) => {
                 f.indent();
                 f.write(self.directive_name());
@@ -589,6 +607,10 @@ impl Displayable for ast::Item {
                 }
                 f.end();
             }
+            UpstreamKeepalive(_) => todo!(),
+            UpstreamKeepaliveTimeout(_) => todo!(),
+            UpstreamDynamicResolve => todo!(),
+            UpstreamServer(_, _) => todo!(),
         }
     }
 }

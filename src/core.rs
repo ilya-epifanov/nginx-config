@@ -13,24 +13,24 @@ use value::Value;
 
 
 fn error_page<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     use ast::ErrorPageResponse;
     use value::Item::*;
 
     fn lit<'a, 'x>(val: &'a Value) -> Result<&'a str, Error<Token<'x>, Token<'x>>> {
         if val.data.is_empty() {
-            return Err(Error::unexpected_message(
+            return Err(Error::unexpected_static_message(
                 "empty error codes are not supported"));
         }
         if val.data.len() > 1 {
-            return Err(Error::unexpected_message(
+            return Err(Error::unexpected_static_message(
                 "only last argument of error_codes \
                 can contain variables"));
         }
         match val.data[0] {
             Literal(ref x) => return Ok(x),
-            _ => return Err(Error::unexpected_message(
+            _ => return Err(Error::unexpected_static_message(
                 "only last argument of error_codes \
                 can contain variables")),
         }
@@ -44,7 +44,7 @@ fn error_page<'a>()
     .with(many(value()))
     .and_then(move |mut v: Vec<_>| {
         if v.is_empty() {
-            return Err(Error::unexpected_message(
+            return Err(Error::unexpected_static_message(
                 "error_page directive must not be empty"));
         }
         let uri = v.pop().unwrap();
@@ -94,7 +94,7 @@ enum ListenParts {
 }
 
 fn listen<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     use ast::{Address, Listen, HttpExt};
     use self::ListenParts::*;
@@ -111,7 +111,7 @@ fn listen<'a>()
         };
         Ok(v)
     }))
-    .and(many::<Vec<_>, _>(choice((
+    .and(many::<Vec<_>, _, _>(choice((
         ident("default_server").map(|_| DefaultServer),
         ident("ssl").map(|_| Ssl),
         ident("http2").map(|_| Ext(HttpExt::Http2)),
@@ -127,7 +127,7 @@ fn listen<'a>()
         prefix("ipv6only=").and_then(|val| Ok(Ipv6Only(match val {
             "on" => true,
             "off" => false,
-            _ => return Err(Error::unexpected_message("only on/off supported")),
+            _ => return Err(Error::unexpected_static_message("only on/off supported")),
         }))),
         ident("reuseport").map(|_| ReusePort),
     ))))
@@ -157,7 +157,7 @@ fn listen<'a>()
 }
 
 fn limit_except<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     ident("limit_except")
     .with(many1(string().map(|x| x.value.to_string())))
@@ -168,7 +168,7 @@ fn limit_except<'a>()
 }
 
 pub fn directives<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     choice((
         error_page(),
@@ -203,7 +203,7 @@ pub fn directives<'a>()
                     "crit" => Ok(Crit),
                     "alert" => Ok(Alert),
                     "emerg" => Ok(Emerg),
-                    _ => Err(::combine::easy::Error::unexpected_message(
+                    _ => Err(::combine::easy::Error::unexpected_static_message(
                             "invalid log level")),
                 }
             })))

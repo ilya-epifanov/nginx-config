@@ -1,7 +1,7 @@
+use combine::error::StreamError;
+use combine::parser::combinator::{FnOpaque, opaque, no_partial};
 use combine::{eof, many, many1, Parser};
 use combine::{choice, position};
-use combine::combinator::{opaque, no_partial, FnOpaque};
-use combine::error::StreamError;
 use combine::easy::Error;
 
 use ast::{self, Main, Directive, Item};
@@ -13,6 +13,7 @@ use value::Value;
 
 use access;
 use core;
+use std::borrow::Cow;
 use gzip;
 use headers;
 use proxy;
@@ -26,20 +27,24 @@ pub enum Code {
     Normal(u32),
 }
 
-pub fn bool<'a>() -> impl Parser<Output=bool, Input=TokenStream<'a>> {
+pub fn bool<'a>() -> impl Parser<TokenStream<'a>, Output=bool> {
     choice((
         ident("on").map(|_| true),
         ident("off").map(|_| false),
     ))
 }
 
-pub fn value<'a>() -> impl Parser<Output=Value, Input=TokenStream<'a>> {
+pub fn usize<'a>() -> impl Parser<TokenStream<'a>, Output=usize> {
+    string().and_then(|v| v.value.parse())
+}
+
+pub fn value<'a>() -> impl Parser<TokenStream<'a>, Output=Value> {
     (position(), string())
     .and_then(|(p, v)| Value::parse(p, v))
 }
 
 pub fn worker_processes<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     use ast::WorkerProcesses;
     ident("worker_processes")
@@ -51,7 +56,7 @@ pub fn worker_processes<'a>()
     .map(Item::WorkerProcesses)
 }
 
-pub fn server_name<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn server_name<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::ServerName::*;
     ident("server_name")
     .with(many1(
@@ -74,7 +79,7 @@ pub fn server_name<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
 }
 
 
-pub fn map<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn map<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use tokenizer::Kind::{BlockStart, BlockEnd};
     use helpers::kind;
     enum Tok {
@@ -89,13 +94,13 @@ pub fn map<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
     .and(string().and_then(|t| {
         let ch1 = t.value.chars().nth(0).unwrap_or(' ');
         let ch2 = t.value.chars().nth(1).unwrap_or(' ');
-        if ch1 == '$' && matches!(ch2, 'a'...'z' | 'A'...'Z' | '_') &&
+        if ch1 == '$' && matches!(ch2, 'a'..='z' | 'A'..='Z' | '_') &&
             t.value[2..].chars()
-            .all(|x| matches!(x, 'a'...'z' | 'A'...'Z' | '0'...'9' | '_'))
+            .all(|x| matches!(x, 'a'..='z' | 'A'..='Z' | '0'..='9' | '_'))
         {
             Ok(t.value[1..].to_string())
         } else {
-            Err(Error::unexpected_message("invalid variable"))
+            Err(Error::unexpected_static_message("invalid variable"))
         }
     }))
     .skip(kind(BlockStart))
@@ -169,14 +174,32 @@ pub fn block<'a>()
     })
 }
 
+pub fn upstream_block<'a>()
+    -> FnOpaque<TokenStream<'a>, ((Pos, Pos), Vec<Directive>)>
+{
+    use tokenizer::Kind::{BlockStart, BlockEnd};
+    use helpers::kind;
+    opaque(|f| {
+        f(&mut no_partial((
+                position(),
+                kind(BlockStart)
+                    .with(many(upstream_directive()))
+                    .skip(kind(BlockEnd)),
+                position(),
+        ))
+        .map(|(s, dirs, e)| ((s, e), dirs)))
+    })
+}
+
+
 // A string that forbids variables
-pub fn raw<'a>() -> impl Parser<Output=String, Input=TokenStream<'a>> {
+pub fn raw<'a>() -> impl Parser<TokenStream<'a>, Output=String> {
     // TODO(tailhook) unquote single and double quotes
     // error on variables?
     string().and_then(|t| Ok::<_, Error<_, _>>(t.value.to_string()))
 }
 
-pub fn location<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn location<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::LocationPattern::*;
     ident("location").with(choice((
         text("=").with(raw().map(Exact)),
@@ -195,6 +218,15 @@ pub fn location<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
     })
 }
 
+pub fn upstream<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
+    ident("upstream")
+        .with(string())
+        .and(upstream_block())
+        .map(|(name, (position, directives))| {
+            Item::Upstream(ast::Upstream { name: name.to_string(), position, directives })
+        })
+}
+
 impl Code {
     pub fn parse<'x, 'y>(code_str: &'x str)
         -> Result<Code, Error<Token<'y>, Token<'y>>>
@@ -202,8 +234,8 @@ impl Code {
         let code = code_str.parse::<u32>()?;
         match code {
             301 | 302 | 303 | 307 | 308 => Ok(Code::Redirect(code)),
-            200...599 => Ok(Code::Normal(code)),
-            _ => return Err(Error::unexpected_message(
+            200..=599 => Ok(Code::Normal(code)),
+            _ => return Err(Error::unexpected_format(
                 format!("invalid response code {}", code))),
         }
     }
@@ -216,7 +248,7 @@ impl Code {
 }
 
 
-pub fn try_files<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn try_files<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::TryFilesLastOption::*;
     use ast::Item::TryFiles;
     use value::Item::*;
@@ -243,7 +275,7 @@ pub fn try_files<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
 }
 
 
-pub fn openresty<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
+pub fn openresty<'a>() -> impl Parser<TokenStream<'a>, Output=Item> {
     use ast::Item::*;
     choice((
         ident("rewrite_by_lua_file").with(value()).skip(semi())
@@ -271,7 +303,29 @@ pub fn openresty<'a>() -> impl Parser<Output=Item, Input=TokenStream<'a>> {
     ))
 }
 
-pub fn directive<'a>() -> impl Parser<Output=Directive, Input=TokenStream<'a>>
+pub fn upstream_directive<'a>() -> impl Parser<TokenStream<'a>, Output=Directive> {
+    position()
+    .and(choice((
+        ident("keepalive").with(usize()).skip(semi())
+            .map(Item::UpstreamKeepalive),
+        ident("keepalive_timeout").with(value()).skip(semi())
+            .map(Item::UpstreamKeepaliveTimeout),
+        ident("dynamic_resolve").skip(semi())
+            .map(|_| Item::UpstreamDynamicResolve),
+        ident("server").with(many1(value())).skip(semi())
+            .map(|v: Vec<Value>| {
+                let name = v[0].to_string().map(Cow::into_owned).unwrap();
+                let rest = v[1..].into_iter().cloned().collect();
+                Item::UpstreamServer(name, rest)
+            }),
+    )))
+    .map(|(pos, dir)| Directive {
+        position: pos,
+        item: dir,
+    })
+}
+
+pub fn directive<'a>() -> impl Parser<TokenStream<'a>, Output=Directive>
 {
     position()
     .and(choice((
@@ -287,6 +341,7 @@ pub fn directive<'a>() -> impl Parser<Output=Directive, Input=TokenStream<'a>>
             .map(|(position, directives)| ast::Server { position, directives })
             .map(Item::Server),
         rewrite::directives(),
+        upstream(),
         try_files(),
         ident("include").with(value()).skip(semi()).map(Item::Include),
         ident("ssl_certificate").with(value()).skip(semi())
@@ -335,6 +390,9 @@ pub fn parse_directives(s: &str) -> Result<Vec<Directive>, ParseError> {
     let (doc, _) = many1(directive())
         .skip(eof())
         .parse_stream(&mut tokens)
-        .map_err(|e| e.into_inner().error)?;
+        .map_err(|e| ParseError::from(e))
+        .into_result()
+        .map_err(|e| e.into_inner().error)?
+        ;
     Ok(doc)
 }

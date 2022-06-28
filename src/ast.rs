@@ -136,6 +136,13 @@ pub struct Location {
     pub directives: Vec<Directive>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Upstream {
+    pub position: (Pos, Pos),
+    pub name: String,
+    pub directives: Vec<Directive>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 pub enum GzipStatic {
     On,
@@ -340,8 +347,16 @@ pub enum Item {
     Http(Http),
     Server(Server),
     Location(Location),
+    Upstream(Upstream),
     Listen(Listen),
     ProxyPass(Value),
+    ProxySslName(Value),
+    ProxySslTrustedCertificate(Value),
+    ProxyKeepAlive(Vec<Value>),
+    ProxyCacheUseStale(Vec<Value>),
+    ProxyCacheRevalidate(bool),
+    ProxyCacheLock(bool),
+    ProxyCachePath(Vec<Value>),
     ProxySetHeader { field: Value, value: Value },
     ProxyMethod(Value),
     ProxyReadTimeout(Value),
@@ -412,10 +427,15 @@ pub enum Item {
     SetRealIpFrom(RealIpFrom),
     // index module
     Index(Vec<Value>),
+    // upstream module
+    UpstreamKeepalive(usize),
+    #[cfg(feature = "unstable")]
+    UpstreamKeepaliveTimeout(Value),
+    UpstreamDynamicResolve,
+    UpstreamServer(String, Vec<Value>),
 }
 
 impl Item {
-
     pub fn directive_name(&self) -> &'static str {
         use self::Item::*;
         match *self {
@@ -425,9 +445,17 @@ impl Item {
             Http(..) => "http",
             Server(..) => "server",
             Location(..) => "location",
+            Upstream(..) => "upstream",
             LimitExcept(..) => "limit_except",
             Listen(..) => "listen",
             ProxyPass(..) => "proxy_pass",
+            ProxySslName(..) => "proxy_ssl_name",
+            ProxySslTrustedCertificate(..) => "proxy_ssl_trusted_certificate",
+            ProxyKeepAlive(..) => "proxy_keepalive",
+            ProxyCacheUseStale(..) => "proxy_cache_use_stale",
+            ProxyCacheRevalidate(..) => "proxy_cache_revalidate",
+            ProxyCacheLock(..) => "proxy_cache_lock",
+            ProxyCachePath(..) => "proxy_cache_path",
             ProxySetHeader {..} => "proxy_set_header",
             ProxyMethod {..} => "proxy_method",
             ProxyReadTimeout {..} => "proxy_read_timeout",
@@ -497,6 +525,12 @@ impl Item {
             SetRealIpFrom(..) => "set_real_ip_from",
             // index module
             Index(..) => "index",
+            // upstream module
+            UpstreamKeepalive(..) => "keepalive",
+            #[cfg(feature = "unstable")]
+            UpstreamKeepaliveTimeout(..) => "keepalive_timeout",
+            UpstreamDynamicResolve => "dynamic_resolve",
+            UpstreamServer(..) => "server",
         }
     }
 
@@ -509,9 +543,17 @@ impl Item {
             Http(ref h) => Some(&h.directives[..]),
             Server(ref s) => Some(&s.directives[..]),
             Location(ref l) => Some(&l.directives[..]),
+            Upstream(ref u) => Some(&u.directives[..]),
             LimitExcept(ref l) => Some(&l.directives[..]),
             Listen(_) => None,
             ProxyPass(_) => None,
+            ProxySslName(_) => None,
+            ProxySslTrustedCertificate(_) => None,
+            ProxyKeepAlive(_) => None,
+            ProxyCacheUseStale(_) => None,
+            ProxyCacheRevalidate(_) => None,
+            ProxyCacheLock(_) => None,
+            ProxyCachePath(_) => None,
             ProxyPassRequestHeaders(..) => None,
             ProxyPassRequestBody(..) => None,
             ProxySetHeader {..} => None,
@@ -581,6 +623,12 @@ impl Item {
             SetRealIpFrom(..) => None,
             // index module
             Index(..) => None,
+            // upstream module
+            UpstreamKeepalive(..) => None,
+            #[cfg(feature = "unstable")]
+            UpstreamKeepaliveTimeout(..) => None,
+            UpstreamDynamicResolve => None,
+            UpstreamServer(..) => None,
         }
     }
 
@@ -593,9 +641,17 @@ impl Item {
             Http(ref mut h) => Some(&mut h.directives),
             Server(ref mut s) => Some(&mut s.directives),
             Location(ref mut l) => Some(&mut l.directives),
+            Upstream(ref mut u) => Some(&mut u.directives),
             LimitExcept(ref mut l) => Some(&mut l.directives),
             Listen(_) => None,
             ProxyPass(_) => None,
+            ProxySslName(_) => None,
+            ProxySslTrustedCertificate(_) => None,
+            ProxyKeepAlive(_) => None,
+            ProxyCacheUseStale(_) => None,
+            ProxyCacheRevalidate(_) => None,
+            ProxyCacheLock(_) => None,
+            ProxyCachePath(_) => None,
             ProxySetHeader {..} => None,
             ProxyMethod {..} => None,
             ProxyReadTimeout {..} => None,
@@ -665,6 +721,12 @@ impl Item {
             SetRealIpFrom(..) => None,
             // index module
             Index(..) => None,
+            // upstream module
+            UpstreamKeepalive(..) => None,
+            #[cfg(feature = "unstable")]
+            UpstreamKeepaliveTimeout(..) => None,
+            UpstreamDynamicResolve => None,
+            UpstreamServer(..) => None,
         }
     }
 
@@ -687,9 +749,17 @@ impl Item {
             Http(_) => {},
             Server(_) => {},
             Location(_) => {},
+            Upstream(_) => {},
             LimitExcept(_) => {},
             Listen(_) => {},
             ProxyPass(ref mut v) => f(v),
+            ProxySslName(ref mut v) => f(v),
+            ProxySslTrustedCertificate(ref mut v) => f(v),
+            ProxyKeepAlive(ref mut v) => v.iter_mut().for_each(|v| f(v)),
+            ProxyCacheUseStale(ref mut v) => v.iter_mut().for_each(|v| f(v)),
+            ProxyCacheRevalidate(_) => {},
+            ProxyCacheLock(_) => {},
+            ProxyCachePath(_) => {},
             ProxySetHeader { ref mut field, ref mut value } => {
                 f(field);
                 f(value);
@@ -822,6 +892,12 @@ impl Item {
                     f(v);
                 }
             }
+            // upstream module
+            UpstreamKeepalive(..) => {},
+            #[cfg(feature = "unstable")]
+            UpstreamKeepaliveTimeout(..) => {},
+            UpstreamDynamicResolve => {},
+            UpstreamServer(..) => {},
         }
     }
 }

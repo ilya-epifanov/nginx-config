@@ -7,7 +7,7 @@ use helpers::{semi, ident};
 use tokenizer::{TokenStream};
 
 fn add_header<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     ident("add_header")
     .with((
@@ -22,7 +22,7 @@ fn add_header<'a>()
 }
 
 fn expires<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     ident("expires")
     .with(optional(ident("modified"))).map(|x| x.is_some())
@@ -33,7 +33,7 @@ fn expires<'a>()
 }
 
 pub fn directives<'a>()
-    -> impl Parser<Output=Item, Input=TokenStream<'a>>
+    -> impl Parser<TokenStream<'a>, Output=Item>
 {
     choice((
         add_header(),
